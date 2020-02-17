@@ -79,7 +79,7 @@ func (svc *ControlService) updateMemberStatus(ctx context.Context) error {
 	// Update either:
 	// - members unresponsive to ping
 	// - members with stopped processes
-	// TODO: update members with ping errors
+	// - members returning error from dRPC ping
 	badRanks := make(map[uint32]system.MemberState)
 	for _, addr := range hostAddrs {
 		hResults, err := svc.harnessClient.Query(ctx, addr)
