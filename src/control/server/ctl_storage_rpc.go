@@ -39,7 +39,10 @@ import (
 	"github.com/daos-stack/daos/src/control/server/storage/scm"
 )
 
-const msgFormatErr = "failure formatting storage, check RPC response for details"
+const (
+	msgFormatErr      = "failure formatting storage, check RPC response for details"
+	msgNvmeFormatSkip = "NVMe format skipped on instance %d as SCM format did not complete"
+)
 
 // newState creates, populates and returns ResponseState in addition
 // to logging any err.
@@ -241,10 +244,8 @@ func (c *ControlService) scmFormat(scmCfg storage.ScmConfig, reformat bool) (*ct
 func (c *ControlService) doFormat(i *IOServerInstance, reformat bool, resp *ctlpb.StorageFormatResp) error {
 	needsSuperblock := true
 	needsScmFormat := reformat
-	// indicate that NVMe not yet formatted
-	skipErr := FaultBdevFormatSkipped(i.Index())
-	skipNvmeResult := newCret(c.log, "format", "", ctlpb.ResponseStatus_CTL_ERR_NVME,
-		skipErr.Error(), skipErr.Resolution)
+	skipNvmeResult := newCret(c.log, "format", "", ctlpb.ResponseStatus_CTL_SUCCESS, "",
+		fmt.Sprintf(msgNvmeFormatSkip, i.Index()))
 
 	c.log.Infof("formatting storage for %s instance %d (reformat: %t)",
 		DataPlaneName, i.Index(), reformat)
@@ -301,7 +302,8 @@ func (c *ControlService) doFormat(i *IOServerInstance, reformat bool, resp *ctlp
 		// A config with SCM and no block devices is valid.
 		if len(bdevConfig.DeviceList) > 0 {
 			bdevListStr := strings.Join(bdevConfig.DeviceList, ",")
-			c.log.Infof("Starting format of %s block devices (%s)", bdevConfig.Class, bdevListStr)
+			c.log.Infof("Starting format of %s block devices (%s)",
+				bdevConfig.Class, bdevListStr)
 
 			res, err := c.bdev.Format(bdev.FormatRequest{
 				Class:      bdevConfig.Class,
@@ -317,7 +319,8 @@ func (c *ControlService) doFormat(i *IOServerInstance, reformat bool, resp *ctlp
 				if status.Error != nil {
 					ctlpbStatus = ctlpb.ResponseStatus_CTL_ERR_NVME
 					errMsg = status.Error.Error()
-					c.log.Errorf("  format of %s device %s failed: %s", bdevConfig.Class, dev, errMsg)
+					c.log.Errorf("  format of %s device %s failed: %s",
+						bdevConfig.Class, dev, errMsg)
 					if fault.HasResolution(status.Error) {
 						infoMsg = fault.ShowResolutionFor(status.Error)
 					}
@@ -326,7 +329,8 @@ func (c *ControlService) doFormat(i *IOServerInstance, reformat bool, resp *ctlp
 					newCret(c.log, "format", dev, ctlpbStatus, errMsg, infoMsg))
 			}
 
-			c.log.Infof("Finished format of %s block devices (%s)", bdevConfig.Class, bdevListStr)
+			c.log.Infof("Finished format of %s block devices (%s)", bdevConfig.Class,
+				bdevListStr)
 		}
 
 		resp.Crets = append(resp.Crets, nvmeResults...) // append this instance's results
