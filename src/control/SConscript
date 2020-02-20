@@ -81,7 +81,7 @@ def install_go_bin(denv, gosrc, gopath, libs, name, install_name):
             return '0x' + buildid.decode()
     def go_ldflags():
         return ' '.join(['-ldflags',
-                         '"-X main.daosVersion=%s' % DAOS_VERSION,
+                         '"-X github.com/daos-stack/daos/src/control/versions.DAOS=%s' % DAOS_VERSION,
                          '-B %s"' % gen_build_id(),
                          '-v'])
     denv.Command(bin_path, src,

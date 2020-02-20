@@ -1,5 +1,5 @@
 //
-// (C) Copyright 2018-2019 Intel Corporation.
+// (C) Copyright 2018-2020 Intel Corporation.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,9 +39,8 @@ import (
 	"github.com/daos-stack/daos/src/control/common"
 	"github.com/daos-stack/daos/src/control/drpc"
 	"github.com/daos-stack/daos/src/control/logging"
+	"github.com/daos-stack/daos/src/control/versions"
 )
-
-var daosVersion string
 
 const (
 	agentSockName        = "agent.sock"
@@ -62,7 +61,7 @@ type cliOptions struct {
 type versionCmd struct{}
 
 func (cmd *versionCmd) Execute(_ []string) error {
-	fmt.Printf("daos_agent version %s\n", daosVersion)
+	fmt.Printf("daos_agent version %s\n", versions.DAOS)
 	os.Exit(0)
 	return nil
 }

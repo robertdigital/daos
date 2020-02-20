@@ -33,6 +33,7 @@ import (
 	"github.com/daos-stack/daos/src/control/pbin"
 	"github.com/daos-stack/daos/src/control/server/storage/bdev"
 	"github.com/daos-stack/daos/src/control/server/storage/scm"
+	"github.com/daos-stack/daos/src/control/versions"
 )
 
 func sendFailure(err error, res *pbin.Response, dest io.Writer) error {
@@ -88,7 +89,7 @@ func handleRequest(log logging.Logger, scmProvider *scm.Provider, bdevProvider *
 
 	switch req.Method {
 	case "Ping":
-		return sendSuccess(struct{}{}, &res, resDest)
+		return sendSuccess(&pbin.PingResp{Version: versions.DAOS}, &res, resDest)
 	case "ScmMount", "ScmUnmount":
 		var mReq scm.MountRequest
 		if err := json.Unmarshal(req.Payload, &mReq); err != nil {

@@ -38,9 +38,8 @@ import (
 	"github.com/daos-stack/daos/src/control/pbin"
 	"github.com/daos-stack/daos/src/control/server/storage/bdev"
 	"github.com/daos-stack/daos/src/control/server/storage/scm"
+	"github.com/daos-stack/daos/src/control/versions"
 )
-
-var daosVersion string
 
 // exitWithError logs the error to stderr and exits.
 func exitWithError(log logging.Logger, err error) {
@@ -87,7 +86,7 @@ func checkParentName(log logging.Logger) {
 	daosServer := "daos_server"
 	if !strings.HasSuffix(pPath, daosServer) {
 		exitWithError(log, errors.Errorf("%s (version %s) may only be invoked by %s",
-			os.Args[0], daosVersion, daosServer))
+			os.Args[0], versions.DAOS, daosServer))
 	}
 }
 
