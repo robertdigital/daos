@@ -66,6 +66,7 @@ struct pool_cmd_options {
 	uint64_t      size;
 	uint32_t      replica_count;
 	unsigned int  verbose;
+	bool          all;
 };
 
 /**
@@ -125,6 +126,8 @@ parse_pool_args_cb(int key, char *arg,
 	case 'z':
 		parse_size(arg, &(options->size));
 		break;
+	case 0x1234:
+		options->all = true;
 	}
 	return 0;
 }
@@ -204,6 +207,61 @@ cmd_create_pool(int argc, const char **argv, void *ctx)
 		D_FREE(svc.rl_ranks);
 	return rc;
 }
+/**
+ * Process a create pool command.
+ */
+int
+cmd_list_pools(int argc, const char **argv, void *ctx)
+{
+	int           rc = -ENXIO;
+	d_rank_list_t svc = {NULL, 0};
+
+	struct argp_option options[] = {
+		{"server-group",   's',    "SERVER-GROUP",     0,
+		 "ID of the server group that is to manage the new pool"},
+		{"gid",            'g',    "GID",              0,
+		 "Group ID that is to own the new pool"},
+		{"verbose",          'v',   0,                0,
+		 "Verbose triggers additional results text to be output."},
+		{0}
+	};
+	struct argp argp = {options, parse_pool_args_cb};
+	struct pool_cmd_options cp_options = {"daos_server", NULL, "0", "0",
+				      0, 0700, 0, 0, 1024*1024*1024, 1, 0};
+
+
+	/* adjust the arguments to skip over the command */
+	argv++;
+	argc--;
+
+	/* once the command is removed the remaining arguments conform
+	 * to GNU standards and can be parsed with argp
+	 */
+	argp_parse(&argp, argc, (char **restrict)argv, 0, 0, &cp_options);
+
+
+	daos_mgmt_pool_info_t *pools = NULL;
+	char pool_uuid_str[100] = {0};
+	daos_size_t pools_nr = 0;
+	rc = daos_mgmt_list_pools(cp_options.server_group,
+				  &pools_nr, NULL, NULL);
+	D_ALLOC_ARRAY(pools, pools_nr);
+	if (rc != 0)
+		return rc;
+	rc = daos_mgmt_list_pools(cp_options.server_group,
+				  &pools_nr, pools, NULL);
+	if (rc != 0)
+		return rc;
+	for (int i = 0; i < pools_nr; i++) {
+		uuid_unparse(pools[i].mgpi_uuid, pool_uuid_str);
+		printf(" - %s (%d)\n", pool_uuid_str, pools[i].mgpi_svc->rl_nr);
+	}
+
+
+	if (svc.rl_ranks != NULL)
+		D_FREE(svc.rl_ranks);
+	return rc;
+}
 
 /**
  * Function to process a destroy pool command.
@@ -219,6 +277,8 @@ cmd_destroy_pool(int argc, const char **argv, void *ctx)
 		 "ID of the server group that manages the pool"},
 		{"uuid",           'i',   "UUID",           0,
 		 "ID of the pool that is to be destroyed"},
+		{"all",           0x1234,   NULL,           0,
+		 "Destroy all pools"},
 		{"force",          'f',   0,                0,
 		 "Force pool destruction regardless of current state."},
 		{0}
@@ -240,15 +300,52 @@ cmd_destroy_pool(int argc, const char **argv, void *ctx)
 	printf("destroy_pool uuid:%s server:%s force:%i\n", dp_options.uuid,
 	       dp_options.server_group, dp_options.force);
 
-	rc = uuid_parse(dp_options.uuid, uuid);
+	if (dp_options.all) {
+		daos_mgmt_pool_info_t *pools = NULL;
+		char pool_uuid_str[100] = {0};
+		daos_size_t pools_nr = 0;
+		rc = daos_mgmt_list_pools(dp_options.server_group,
+					  &pools_nr, NULL, NULL);
+		D_ALLOC_ARRAY(pools, pools_nr);
+		if (rc != 0)
+			return rc;
+		rc = daos_mgmt_list_pools(dp_options.server_group,
+					  &pools_nr, pools, NULL);
+		if (rc != 0)
+			return rc;
+		for (int i = 0; i < pools_nr; i++) {
+			rc = daos_pool_destroy(pools[i].mgpi_uuid,
+					       dp_options.server_group,
+					       (int)dp_options.force, NULL);
 
-	rc = daos_pool_destroy(uuid, dp_options.server_group,
-			       (int)dp_options.force, NULL);
+			uuid_unparse(pools[i].mgpi_uuid, pool_uuid_str);
+			if (rc)
+				printf("<<<daosctl>>> Pool (%s) destroy result: %d\n",
+				       pool_uuid_str, rc);
+			else
+				printf("<<<daosctl>>> Pool (%s) destroyed.\n",
+				       pool_uuid_str);
+		}
+		D_FREE(pools);
+	} else {
+		if (dp_options.uuid == NULL) {
+			printf("Pool UUID missing.\n");
+			return EINVAL;
+		}
 
-	if (rc)
-		printf("<<<daosctl>>> Pool destroy result: %d\n", rc);
-	else
-		printf("<<<daosctl>>> Pool destroyed.\n");
+		rc = uuid_parse(dp_options.uuid, uuid);
+
+		rc = daos_pool_destroy(uuid, dp_options.server_group,
+				       (int)dp_options.force, NULL);
+
+		if (rc)
+			printf("<<<daosctl>>> Pool (%s) destroy result: %d\n",
+			       dp_options.uuid, rc);
+		else
+			printf("<<<daosctl>>> Pool (%s) destroyed.\n",
+				dp_options.uuid);
+	}
+
 
 	fflush(stdout);
 

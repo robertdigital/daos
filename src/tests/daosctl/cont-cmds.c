@@ -63,7 +63,25 @@ struct container_cmd_options {
 	unsigned int  mode;
 	unsigned int  uid;
 	unsigned int  gid;
+	unsigned int  csum_type;
 };
+
+enum {
+	CSUM_ARG_VAL_TYPE		= 0x2713,
+	CSUM_ARG_VAL_CHUNKSIZE		= 0x2714,
+	CSUM_ARG_VAL_SERVERVERIFY	= 0x2715,
+};
+
+static unsigned int parse_csum_type(char *arg) {
+	if (strcmp(arg, "crc16") == 0)
+		return DAOS_PROP_CO_CSUM_CRC16;
+	if (strcmp(arg, "crc32") == 0)
+		return DAOS_PROP_CO_CSUM_CRC32;
+	if (strcmp(arg, "crc64") == 0)
+		return DAOS_PROP_CO_CSUM_CRC64;
+
+	return DAOS_PROP_CO_CSUM_OFF;
+}
 
 /**
  * Callback function for container commands works with argp to put
@@ -91,6 +109,9 @@ parse_cont_args_cb(int key, char *arg,
 	case 'l':
 		options->server_list = arg;
 		break;
+	case CSUM_ARG_VAL_TYPE:
+		options->csum_type = parse_csum_type(arg);
+		break;
 	}
 	return 0;
 }
@@ -108,6 +129,8 @@ cmd_create_container(int argc, const char **argv, void *ctx)
 	d_rank_list_t    pool_service_list = {NULL, 0};
 	unsigned int     flag = DAOS_PC_EX;
 	daos_pool_info_t info = {0};
+	char		*pool_uuid_str = NULL;
+	daos_prop_t	*props = NULL;
 
 	struct argp_option options[] = {
 		{"server-group", 's', "SERVER-GROUP", 0,
@@ -118,6 +141,8 @@ cmd_create_container(int argc, const char **argv, void *ctx)
 		 "ID of the pool that is to host the new container."},
 		{"c-uuid", 'c', "UUID", 0,
 		 "ID of the container if a specific one is desired."},
+		{"csum-type", CSUM_ARG_VAL_TYPE, "TYPE", 0,
+		 "Checksum type for the container (crc16|crc32|crc64"},
 		{0}
 	};
 	struct argp argp = {options, parse_cont_args_cb};
@@ -135,13 +160,27 @@ cmd_create_container(int argc, const char **argv, void *ctx)
 	argp_parse(&argp, argc, (char **restrict)argv, 0, 0, &cc_options);
 
 	/* uuid needs extra parsing */
+
+	if (cc_options.pool_uuid == NULL) {
+		D_ALLOC(pool_uuid_str, 100);
+		if (get_pool(pool_uuid_str))
+			cc_options.pool_uuid = pool_uuid_str;
+	}
+
 	if (!cc_options.pool_uuid ||
 	    (uuid_parse(cc_options.pool_uuid, pool_uuid) < 0))
 		return EINVAL;
+	D_FREE(pool_uuid_str);
+
 
 	/* turn the list of pool service nodes into a rank list */
 	rc = parse_rank_list(cc_options.server_list,
 			     &pool_service_list);
+
+	/* [todo-ryon]: ?? */
+	if (pool_service_list.rl_nr == 0)
+		pool_service_list.rl_nr = 1;
+
 	if (rc < 0)
 		/* TODO do a better job with failure return */
 		return rc;
@@ -163,7 +202,16 @@ cmd_create_container(int argc, const char **argv, void *ctx)
 			goto done;
 	}
 
-	rc = daos_cont_create(poh, cont_uuid, NULL, NULL);
+	if (cc_options.csum_type != DAOS_PROP_CO_CSUM_OFF) {
+		props = daos_prop_alloc(1);
+		props->dpp_entries[0].dpe_type = DAOS_PROP_CO_CSUM;
+		props->dpp_entries[0].dpe_val = cc_options.csum_type;
+	}
+
+	rc = daos_cont_create(poh, cont_uuid, props, NULL);
+
+	if (props != NULL)
+		daos_prop_free(props);
 
 	if (rc) {
 		printf("Container create fail, result: %d\n", rc);
@@ -187,6 +235,7 @@ cmd_destroy_container(int argc, const char **argv, void *ctx)
 {
 	int              rc = -ENXIO;
 	uuid_t           pool_uuid;
+	char		 pool_uuid_str[100] = {0};
 	uuid_t           cont_uuid;
 	daos_handle_t    poh;
 	d_rank_list_t    pool_service_list = {NULL, 0};
@@ -221,7 +270,16 @@ cmd_destroy_container(int argc, const char **argv, void *ctx)
 	argp_parse(&argp, argc, (char **restrict)argv, 0, 0, &cc_options);
 
 	/* uuids needs extra parsing */
+	if (cc_options.pool_uuid == NULL) {
+		if (get_pool(pool_uuid_str))
+			cc_options.pool_uuid = pool_uuid_str;
+	}
 	rc = uuid_parse(cc_options.pool_uuid, pool_uuid);
+
+	if (cc_options.cont_uuid == NULL) {
+		printf("No Container UUID provided\n");
+		return EINVAL;
+	}
 	rc = uuid_parse(cc_options.cont_uuid, cont_uuid);
 
 	/* turn the list of pool service nodes into a rank list */
@@ -230,6 +288,9 @@ cmd_destroy_container(int argc, const char **argv, void *ctx)
 	if (rc < 0)
 		/* TODO do a better job with failure return */
 		return rc;
+	/* [todo-ryon]: ?? */
+	if (pool_service_list.rl_nr == 0)
+		pool_service_list.rl_nr = 1;
 
 	rc = daos_pool_connect(pool_uuid, cc_options.server_group,
 			       &pool_service_list,

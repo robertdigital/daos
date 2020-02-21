@@ -62,13 +62,19 @@
 static int dts_obj_class = OC_S1;
 
 struct io_cmd_options {
-	char          *server_group;
-	char          *pool_uuid;
-	char          *cont_uuid;
-	char          *server_list;
-	uint64_t      size;
-	daos_obj_id_t *oid;
-	char          *pattern;
+	char		*server_group;
+	char		*pool_uuid;
+	char		*cont_uuid;
+	char		*server_list;
+	uint64_t	 size;
+	daos_obj_id_t	*oid;
+	char		*pattern;
+
+	daos_recx_t	 recx;
+	char		*string;
+	int		 obj_class;
+	bool		 fault;
+	int		 type;
 };
 
 #define UPDATE_CSUM_SIZE	32
@@ -121,6 +127,13 @@ struct container_info {
 	daos_handle_t  coh;
 };
 
+static int parseType(char *arg)
+{
+	if (strcmp(arg, "array") == 0)
+		return DAOS_IOD_ARRAY;
+	return DAOS_IOD_SINGLE;
+}
+
 /**
  * Callback function for io commands works with argp to put
  * all the arguments into a structure.
@@ -153,6 +166,20 @@ parse_cont_args_cb(int key, char *arg,
 	case 'z':
 		parse_size(arg, &(options->size));
 		break;
+	case 'v':
+		options->string = arg;
+		break;
+	case 'd':
+		options->recx.rx_idx = atoi(arg);
+		break;
+	case 'h':
+		options->recx.rx_nr = atoi(arg);
+		break;
+	case 'x':
+		options->fault = true;
+		break;
+	case 't':
+		options->type = parseType(arg);
 	}
 	return 0;
 }
@@ -240,6 +267,7 @@ open_container(struct container_info *oc_info)
 			    &oc_info->coh, &cinfo, NULL);
 	if (rc) {
 		printf("daos_cont_open failed, rc: %d\n", rc);
+		daos_pool_disconnect(oc_info->poh, NULL);
 		exit(-EINVAL);
 	}
 	return 0;
@@ -383,6 +411,307 @@ lookup_single(const char *dkey, const char *akey, uint64_t idx,
 	ioreq_iod_simple_set(req, &read_size, true, &idx, 1);
 	lookup_internal(&req->dkey, 1, req->sgl, req->iod, th, req,
 			false);
+}
+
+static int
+open_container_from_args(struct io_cmd_options *io_options,
+	struct container_info *cinfo)
+{
+	int rc;
+	char		*pool_uuid_str = NULL;
+
+	if (io_options->pool_uuid == NULL) {
+		D_ALLOC(pool_uuid_str, 100);
+		if (get_pool(pool_uuid_str))
+			io_options->pool_uuid = pool_uuid_str;
+	}
+
+
+	cinfo->server_group = io_options->server_group;
+	cinfo->pool_service_list = (d_rank_list_t){NULL, 0};
+
+	/* uuid needs extra parsing */
+	if (io_options->pool_uuid == NULL)
+		return -EINVAL;
+	rc = uuid_parse(io_options->pool_uuid, cinfo->pool_uuid);
+	D_FREE(pool_uuid_str);
+
+
+	if (io_options->cont_uuid == NULL)
+		return -EINVAL;
+	rc = uuid_parse(io_options->cont_uuid, cinfo->cont_uuid);
+	if (rc < 0) {
+		D_PRINT("uuid_parse failed with %i\n", rc);
+		return rc;
+	}
+	/* turn the list of pool service nodes into a rank list */
+	rc = parse_rank_list(io_options->server_list,
+			     &cinfo->pool_service_list);
+	if (rc < 0) {
+		D_PRINT("Rank list parameter parsing failed with %i\n", rc);
+		return rc;
+	}
+	if (cinfo->pool_service_list.rl_nr == 0)
+		cinfo->pool_service_list.rl_nr = 1;
+
+	rc = open_container(cinfo);
+	return rc;
+}
+
+
+/**
+ * Process a write command.
+ */
+int
+cmd_write_string(int argc, const char **argv, void *ctx)
+{
+	int		 rc = -ENXIO;
+	daos_obj_id_t	 oid;
+	const char	 dkey_str[] = "dkey";
+	daos_key_t	 dkey;
+	const char	 akey_str[] = "akey";
+	char		*string_cpy = NULL;
+
+
+
+	struct argp_option options[] = {
+		{"server-group", 's', "SERVER-GROUP", 0,
+			"ID of the server group that owns the pool"},
+		{"servers",       'l',   "server rank-list", 0,
+			"Pool service ranks, comma separated, no spaces e.g. -l 1,2"},
+		{"p-uuid", 'i', "UUID", 0,
+			"ID of the pool where data is to be written."},
+		{"c-uuid", 'c', "UUID", 0,
+			"ID of the container where data is to be written."},
+		{"string",           'v',    "string value",             0,
+			"String to write to an extent"},
+		{"index",       'd',   "index",           0,
+			"Starting index of the extent to write the string "},
+		{"fault", 'x', NULL, 0,
+			"Corrupt data"},
+		{"type", 't', "single(default)|array", 0,
+			"Store the array as a single value or as an array of single bytes"},
+		{0}
+	};
+	struct argp argp = {options, parse_cont_args_cb};
+
+	struct io_cmd_options io_options = {"daos_server",
+					    NULL, NULL, NULL,
+					    0, NULL, "all_zeros",
+					    .type = DAOS_IOD_SINGLE};
+	/* adjust the arguments to skip over the command */
+	argv++;
+	argc--;
+
+	/* once the command is removed the remaining arguments conform
+	 * to GNU standards and can be parsed with argp
+	 */
+	argp_parse(&argp, argc, (char **restrict)argv, 0, 0, &io_options);
+
+	struct container_info cinfo;
+
+	rc = open_container_from_args(&io_options, &cinfo);
+
+
+	oid.lo	= 1;
+	oid.hi	=100;
+	daos_obj_generate_id(&oid, 0, dts_obj_class, 0);
+
+	size_t str_len = strlen(io_options.string) + 1;
+	io_options.recx.rx_nr = str_len;
+
+	/** Insert */
+	daos_iod_t iod;
+
+	if (io_options.type == DAOS_IOD_SINGLE) {
+		iod.iod_size = str_len;
+	} else {
+		iod.iod_size = 1;
+		iod.iod_recxs = &io_options.recx;
+	}
+	iod.iod_type = io_options.type;
+	iod.iod_nr = 1;
+
+	iod.iod_name.iov_buf = (void *)akey_str;
+	iod.iod_name.iov_len = iod.iod_name.iov_buf_len = strlen(akey_str);
+	dkey.iov_len = dkey.iov_buf_len = strlen(dkey_str);
+	dkey.iov_buf = (void *)dkey_str;
+
+	/** copy string in case there's any corruption on update */
+	D_ALLOC(string_cpy, str_len);
+	strcpy(string_cpy, io_options.string);
+
+	d_sg_list_t sgl;
+	daos_sgl_init(&sgl, 1);
+	sgl.sg_iovs->iov_buf = string_cpy;
+	sgl.sg_iovs->iov_len = sgl.sg_iovs->iov_buf_len = str_len;
+
+	daos_handle_t oh;
+	rc = daos_obj_open(cinfo.coh, oid, 0, &oh, NULL);
+
+	if (io_options.fault) {
+		daos_fail_loc_set(DAOS_CHECKSUM_UPDATE_FAIL);
+		daos_mgmt_set_params(io_options.server_group, -1, DMG_KEY_FAIL_LOC,
+				     DAOS_CHECKSUM_UPDATE_FAIL | DAOS_FAIL_ALWAYS,
+				     0, NULL);
+	}
+	rc = daos_obj_update(oh, DAOS_TX_NONE, 0, &dkey, 1, &iod, &sgl, NULL);
+
+	daos_obj_close(oh, NULL);
+	daos_cont_close(cinfo.coh, NULL);
+	D_FREE(string_cpy);
+
+	printf("'%s' written to object: %" PRIu64 "-%" PRIu64 ", dkey: '%s', akey: '%s'\n",
+		io_options.string, oid.hi, oid.lo, dkey_str, akey_str);
+
+	if (cinfo.poh.cookie != 0)
+		daos_pool_disconnect(cinfo.poh, NULL);
+	return rc;
+}
+/**
+ * Process a read command.
+ */
+int
+cmd_read_string(int argc, const char **argv, void *ctx)
+{
+	int              rc = -ENXIO;
+	daos_obj_id_t    oid;
+	const char	 dkey_str[] = "dkey";
+	daos_key_t	 dkey;
+	const char	 akey_str[] = "akey";
+	char		*pool_uuid_str = NULL;
+
+	struct container_info cinfo;
+
+	struct argp_option options[] = {
+		{"server-group", 's', "SERVER-GROUP", 0,
+			"ID of the server group that owns the pool"},
+		{"servers",       'l',   "server rank-list", 0,
+			"Pool service ranks, comma separated, no spaces e.g. -l 1,2"},
+		{"p-uuid", 'i', "UUID", 0,
+			"ID of the pool where data is to be written."},
+		{"c-uuid", 'c', "UUID", 0,
+			"ID of the container where data is to be written."},
+		{"index",       'd',   "index",           0,
+			"Starting index of the extent to write the string "},
+		{"length",       'h',   "length",           0,
+			"Number of characters to read"},
+		{"fault", 'x', NULL, 0,
+			"Corrupt data"},
+		{"type", 't', "single(default)|array", 0,
+			"Store the array as a single value or as an array of single bytes"},
+
+		{0}
+	};
+	struct argp argp = {options, parse_cont_args_cb};
+
+	struct io_cmd_options io_options = {"daos_server",
+					    NULL, NULL, NULL,
+					    0, NULL, "all_zeros",
+					    .type = DAOS_IOD_SINGLE};
+
+	cinfo.server_group = io_options.server_group;
+	cinfo.pool_service_list = (d_rank_list_t){NULL, 0};
+
+	/* adjust the arguments to skip over the command */
+	argv++;
+	argc--;
+
+	/* once the command is removed the remaining arguments conform
+	 * to GNU standards and can be parsed with argp
+	 */
+	argp_parse(&argp, argc, (char **restrict)argv, 0, 0, &io_options);
+
+	/* uuid needs extra parsing */
+	if (io_options.pool_uuid == NULL) {
+		D_ALLOC(pool_uuid_str, 100);
+		if (get_pool(pool_uuid_str))
+			io_options.pool_uuid = pool_uuid_str;
+	}
+
+	rc = uuid_parse(io_options.pool_uuid, cinfo.pool_uuid);
+	D_FREE(pool_uuid_str);
+	if (io_options.cont_uuid == NULL)
+		return -EINVAL;
+	rc = uuid_parse(io_options.cont_uuid, cinfo.cont_uuid);
+
+	/* turn the list of pool service nodes into a rank list */
+	rc = parse_rank_list(io_options.server_list,
+			     &cinfo.pool_service_list);
+	if (rc < 0) {
+		D_PRINT("Rank list parameter parsing failed with %i\n", rc);
+		return rc;
+	}
+
+	if (cinfo.pool_service_list.rl_nr == 0)
+		cinfo.pool_service_list.rl_nr = 1;
+	rc = open_container(&cinfo);
+	if (rc != 0) {
+		printf("Container Open Failed: %d\n", rc);
+		goto out;
+	}
+
+	oid.lo	= 1;
+	oid.hi	=100;
+	daos_obj_generate_id(&oid, 0, dts_obj_class, 0);
+
+	/** Read */
+
+	daos_handle_t oh;
+	rc = daos_obj_open(cinfo.coh, oid, 0, &oh, NULL);
+	if (rc != 0) {
+		printf("Object Open Error: %d\n", rc);
+		goto out;
+	}
+
+	char *buf = NULL;
+#define BUF_SIZE 1024
+	D_ALLOC(buf, BUF_SIZE);
+
+	d_sg_list_t sgl;
+	daos_sgl_init(&sgl, 1);
+
+	sgl.sg_iovs->iov_buf = buf;
+	sgl.sg_iovs->iov_len = sgl.sg_iovs->iov_buf_len = BUF_SIZE;
+
+	daos_iod_t iod;
+	iod.iod_nr = 1;
+
+	if (io_options.type == DAOS_IOD_SINGLE) {
+		iod.iod_size = BUF_SIZE;
+	} else {
+		iod.iod_size = 1;
+		iod.iod_recxs = &io_options.recx;
+	}
+	iod.iod_type = io_options.type;
+
+	/** Setup Keys */
+	iod.iod_name.iov_buf = (void *)akey_str;
+	iod.iod_name.iov_len = iod.iod_name.iov_buf_len = strlen(akey_str);
+	dkey.iov_len = dkey.iov_buf_len = strlen(dkey_str);
+	dkey.iov_buf = (void *)dkey_str;
+
+
+	if (io_options.fault)
+		daos_fail_loc_set(DAOS_CHECKSUM_FETCH_FAIL);
+	rc = daos_obj_fetch(oh, DAOS_TX_NONE, 0, &dkey, 1, &iod, &sgl, NULL,
+		NULL);
+	if (rc != 0) {
+		printf("Fetch Failed: %d\n", rc);
+		goto out;
+	}
+
+	printf("Read value from object: %" PRIu64 "-%" PRIu64 ", dkey: '%s', akey: '%s'\n'%s'\n",
+	       oid.hi, oid.lo, dkey_str, akey_str, buf);
+
+out:
+	daos_obj_close(oh, NULL);
+	/** done with the container */
+	daos_cont_close(cinfo.coh, NULL);
+
+	if (cinfo.poh.cookie != 0)
+		daos_pool_disconnect(cinfo.poh, NULL);
+	return rc;
 }
 
 /**

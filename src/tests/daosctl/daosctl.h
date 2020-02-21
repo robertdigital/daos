@@ -34,6 +34,7 @@ struct cmd_struct {
 
 int cmd_create_container(int argc, const char **argv, void *ctx);
 int cmd_create_pool(int argc, const char **argv, void *ctx);
+int cmd_list_pools(int argc, const char **argv, void *ctx);
 int cmd_destroy_container(int argc, const char **argv, void *ctx);
 int cmd_destroy_pool(int argc, const char **argv, void *ctx);
 int cmd_evict_pool(int argc, const char **argv, void *ctx);
@@ -51,6 +52,8 @@ int cmd_test_connect_pool(int argc, const char **argv, void *ctx);
 int cmd_test_evict_pool(int argc, const char **argv, void *ctx);
 int cmd_test_query_pool(int argc, const char **argv, void *ctx);
 int cmd_kill_server(int argc, const char **argv, void *ctx);
+int cmd_write_string(int argc, const char **argv, void *ctx);
+int cmd_read_string(int argc, const char **argv, void *ctx);
 int cmd_write_pattern(int argc, const char **argv, void *ctx);
 int cmd_verify_pattern(int argc, const char **argv, void *ctx);
 

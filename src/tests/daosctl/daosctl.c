@@ -58,6 +58,7 @@ const char daosctl_option_string[] =
 static struct cmd_struct commands[] = {
 	{ "create-container", cmd_create_container },
 	{ "create-pool", cmd_create_pool },
+	{ "list-pools", cmd_list_pools },
 	{ "destroy-container", cmd_destroy_container },
 	{ "destroy-pool", cmd_destroy_pool },
 	{ "connect-pool", cmd_connect_pool },
@@ -71,6 +72,8 @@ static struct cmd_struct commands[] = {
 	{ "kill-leader", cmd_kill_pool_leader },
 	{ "test-evict-pool", cmd_test_evict_pool },
 	{ "test-query-pool", cmd_test_query_pool },
+	{ "write-string", cmd_write_string },
+	{ "read-string", cmd_read_string },
 	{ "write-pattern", cmd_write_pattern },
 	{ "verify-pattern", cmd_verify_pattern },
 	{ "help", cmd_help }
@@ -200,6 +203,7 @@ process_cmd(int argc, const char **argv)
 int
 main(int argc, const char **argv)
 {
+	D_ERROR("BANG");
 	/* doesn't return if there were informational options */
 	handle_information_options(&argv, &argc);
 

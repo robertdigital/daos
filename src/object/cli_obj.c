@@ -2674,6 +2674,9 @@ dc_obj_update(tse_task_t *task)
 			D_ERROR("csum_obj_update error: %d", rc);
 			goto out_task;
 		}
+		if (DAOS_FAIL_CHECK(DAOS_CHECKSUM_UPDATE_FAIL)) {
+			((char *)args->sgls->sg_iovs->iov_buf)[0]++;
+		}
 	}
 
 	if (DAOS_FAIL_CHECK(DAOS_DTX_COMMIT_SYNC))
