@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/golang/protobuf/proto"
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
@@ -2157,5 +2158,45 @@ func TestMgmtSvc_ConvertTimeout(t *testing.T) {
 
 	if diff := cmp.Diff(duration.String(), time.Duration(req.Timeout).String()); diff != "" {
 		t.Fatalf("unexpected response (-want, +got)\n%s\n", diff)
+	}
+}
+
+func TestMgmtSvc_validatePool(t *testing.T) {
+	for name, tc := range map[string]struct {
+		scmSize  string
+		nvmeSize string
+		tgtCount uint64
+		expErr   error
+	}{
+		"success":                     {"100G", "10T", 1, nil},
+		"scm too small":               {"15MiB", "10T", 1, FaultPoolScmTooSmall(15 * (1 << 20))},
+		"nvme too small":              {"100G", "900MB", 1, FaultPoolNvmeTooSmall(900000000)},
+		"no scm":                      {"0", "10T", 1, FaultPoolScmTooSmall(0)},
+		"no nvme":                     {"100G", "0", 1, nil},
+		"success multi-target":        {"128MiB", "8G", 8, nil},
+		"scm too small multi-target":  {"127MiB", "8G", 8, FaultPoolScmTooSmall(127 * (1 << 20))},
+		"nvme too small multi-target": {"128MiB", "7G", 8, FaultPoolNvmeTooSmall(7000000000)},
+		"no scm multi-target":         {"0", "10T", 8, FaultPoolScmTooSmall(0)},
+		"no nvme multi-target":        {"100G", "0", 8, nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, buf := logging.NewTestLogger(t.Name())
+			defer common.ShowBufferOnFailure(t, buf)
+
+			scmBytes, err := humanize.ParseBytes(tc.scmSize)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nvmeBytes, err := humanize.ParseBytes(tc.nvmeSize)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			gotErr := (*mgmtSvc)(nil).validatePool(tc.tgtCount,
+				&mgmtpb.PoolCreateReq{
+					Scmbytes: scmBytes, Nvmebytes: nvmeBytes,
+				})
+			common.CmpErr(t, tc.expErr, gotErr)
+		})
 	}
 }
