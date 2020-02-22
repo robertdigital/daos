@@ -302,8 +302,7 @@ func (c *ControlService) doFormat(i *IOServerInstance, reformat bool, resp *ctlp
 		// A config with SCM and no block devices is valid.
 		if len(bdevConfig.DeviceList) > 0 {
 			bdevListStr := strings.Join(bdevConfig.DeviceList, ",")
-			c.log.Infof("Starting format of %s block devices (%s)",
-				bdevConfig.Class, bdevListStr)
+			c.log.Infof("Starting format of %s block devices (%s)", bdevConfig.Class, bdevListStr)
 
 			res, err := c.bdev.Format(bdev.FormatRequest{
 				Class:      bdevConfig.Class,
@@ -319,8 +318,7 @@ func (c *ControlService) doFormat(i *IOServerInstance, reformat bool, resp *ctlp
 				if status.Error != nil {
 					ctlpbStatus = ctlpb.ResponseStatus_CTL_ERR_NVME
 					errMsg = status.Error.Error()
-					c.log.Errorf("  format of %s device %s failed: %s",
-						bdevConfig.Class, dev, errMsg)
+					c.log.Errorf("  format of %s device %s failed: %s", bdevConfig.Class, dev, errMsg)
 					if fault.HasResolution(status.Error) {
 						infoMsg = fault.ShowResolutionFor(status.Error)
 					}
@@ -329,8 +327,7 @@ func (c *ControlService) doFormat(i *IOServerInstance, reformat bool, resp *ctlp
 					newCret(c.log, "format", dev, ctlpbStatus, errMsg, infoMsg))
 			}
 
-			c.log.Infof("Finished format of %s block devices (%s)", bdevConfig.Class,
-				bdevListStr)
+			c.log.Infof("Finished format of %s block devices (%s)", bdevConfig.Class, bdevListStr)
 		}
 
 		resp.Crets = append(resp.Crets, nvmeResults...) // append this instance's results
