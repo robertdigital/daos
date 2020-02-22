@@ -265,7 +265,10 @@ func (c *ControlService) doFormat(i *IOServerInstance, reformat bool, resp *ctlp
 				newMntRet(c.log, "format", scmConfig.MountPoint,
 					ctlpb.ResponseStatus_CTL_ERR_SCM, err.Error(),
 					fault.ShowResolutionFor(err)))
-			resp.Crets = append(resp.Crets, skipNvmeResult)
+
+			if len(i.bdevConfig().DeviceList) > 0 {
+				resp.Crets = append(resp.Crets, skipNvmeResult)
+			}
 
 			return nil // don't continue if formatted and no reformat opt
 		}
@@ -281,7 +284,9 @@ func (c *ControlService) doFormat(i *IOServerInstance, reformat bool, resp *ctlp
 
 		if result.State.Status != ctlpb.ResponseStatus_CTL_SUCCESS {
 			c.log.Error(msgFormatErr)
-			resp.Crets = append(resp.Crets, skipNvmeResult)
+			if len(i.bdevConfig().DeviceList) > 0 {
+				resp.Crets = append(resp.Crets, skipNvmeResult)
+			}
 
 			return nil // don't continue if we can't format SCM
 		}
