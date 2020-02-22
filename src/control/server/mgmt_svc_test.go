@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/golang/protobuf/proto"
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
@@ -2157,5 +2158,36 @@ func TestMgmtSvc_ConvertTimeout(t *testing.T) {
 
 	if diff := cmp.Diff(duration.String(), time.Duration(req.Timeout).String()); diff != "" {
 		t.Fatalf("unexpected response (-want, +got)\n%s\n", diff)
+	}
+}
+
+func TestMgmtSvc_validatePool(t *testing.T) {
+	for name, tc := range map[string]struct {
+		scmSize  string
+		nvmeSize string
+		expErr   error
+	}{
+		"successful validation": {"100G", "10T", nil},
+		"scm too small":         {"15MB", "10T", FaultPoolScmTooSmall(15000000)},
+		"nvme too small":        {"100G", "900MB", FaultPoolNvmeTooSmall(900000000)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, buf := logging.NewTestLogger(t.Name())
+			defer common.ShowBufferOnFailure(t, buf)
+
+			scmBytes, err := humanize.ParseBytes(tc.scmSize)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nvmeBytes, err := humanize.ParseBytes(tc.nvmeSize)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			gotErr := (*mgmtSvc)(nil).validatePool(&mgmtpb.PoolCreateReq{
+				Scmbytes: scmBytes, Nvmebytes: nvmeBytes,
+			})
+			common.CmpErr(t, tc.expErr, gotErr)
+		})
 	}
 }

@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
@@ -42,7 +43,11 @@ import (
 	"github.com/daos-stack/daos/src/control/system"
 )
 
-const instanceUpdateDelay = 500 * time.Millisecond
+const (
+	instanceUpdateDelay = 500 * time.Millisecond
+	minScmSize          = "16MB" // per storage target
+	minNvmeSize         = "1GB"  // per storage target
+)
 
 // NewRankResult returns a reference to a new member result struct.
 func NewRankResult(rank uint32, action string, state system.MemberState, err error) *mgmtpb.RanksResp_RankResult {
@@ -312,9 +317,34 @@ func checkIsMSReplica(mi *IOServerInstance) error {
 	return nil
 }
 
+// validatePool ensures minimum SCM/NVMe pool size per storage target.
+func (svc *mgmtSvc) validatePool(req *mgmtpb.PoolCreateReq) error {
+	minScmBytes, err := humanize.ParseBytes(minScmSize)
+	if err != nil {
+		return err
+	}
+	if req.Scmbytes < minScmBytes {
+		return FaultPoolScmTooSmall(req.Scmbytes)
+	}
+
+	minNvmeBytes, err := humanize.ParseBytes(minNvmeSize)
+	if err != nil {
+		return err
+	}
+	if req.Nvmebytes < minNvmeBytes {
+		return FaultPoolNvmeTooSmall(req.Nvmebytes)
+	}
+
+	return nil
+}
+
 // PoolCreate implements the method defined for the Management Service.
 func (svc *mgmtSvc) PoolCreate(ctx context.Context, req *mgmtpb.PoolCreateReq) (*mgmtpb.PoolCreateResp, error) {
 	svc.log.Debugf("MgmtSvc.PoolCreate dispatch, req:%+v\n", *req)
+
+	if err := svc.validatePool(req); err != nil {
+		return nil, errors.Wrap(err, "validate pool create parameters")
+	}
 
 	mi, err := svc.harness.GetMSLeaderInstance()
 	if err != nil {

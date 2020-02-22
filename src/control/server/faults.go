@@ -25,6 +25,8 @@ package server
 import (
 	"fmt"
 
+	"github.com/dustin/go-humanize"
+
 	"github.com/daos-stack/daos/src/control/fault"
 	"github.com/daos-stack/daos/src/control/fault/code"
 )
@@ -64,6 +66,26 @@ var (
 		"specify at least one IO Server configuration ('servers' list parameter) and restart the control server",
 	)
 )
+
+func FaultPoolNvmeTooSmall(reqBytes uint64) *fault.Fault {
+	return serverFault(
+		code.ServerPoolNvmeTooSmall,
+		fmt.Sprintf("requested NVMe capacity (%s) for pool is too small",
+			humanize.Bytes(reqBytes)),
+		fmt.Sprintf("specify an NVMe capacity larger than %s when creating a pool",
+			minNvmeSize),
+	)
+}
+
+func FaultPoolScmTooSmall(reqBytes uint64) *fault.Fault {
+	return serverFault(
+		code.ServerPoolScmTooSmall,
+		fmt.Sprintf("requested SCM capacity (%s) for pool is too small",
+			humanize.Bytes(reqBytes)),
+		fmt.Sprintf("specify an SCM capacity larger than %s when creating a pool",
+			minScmSize),
+	)
+}
 
 func FaultScmUnmanaged(mntPoint string) *fault.Fault {
 	return serverFault(
