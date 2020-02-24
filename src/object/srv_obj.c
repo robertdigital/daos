@@ -930,6 +930,15 @@ obj_local_rw(crt_rpc_t *rpc, struct ds_cont_hdl *cont_hdl,
 	if (obj_rpc_is_update(rpc)) {
 		obj_singv_ec_rw_filter(orw, iods, offs, true);
 		bulk_op = CRT_BULK_GET;
+
+		/** Fake corruption from network */
+		if (DAOS_FAIL_CHECK(DAOS_CHECKSUM_FAULT_NETWORK)  && !rma) {
+			D_PRINT("Corrupting data\n");
+
+			dcf_corrupt(orw->orw_sgls.ca_arrays,
+				    orw->orw_sgls.ca_count);
+		}
+
 		rc = vos_update_begin(cont->sc_hdl, orw->orw_oid,
 				      orw->orw_epoch, dkey, orw->orw_nr, iods,
 				      orw->orw_iod_csums.ca_arrays, &ioh, dth);
@@ -1013,8 +1022,38 @@ obj_local_rw(crt_rpc_t *rpc, struct ds_cont_hdl *cont_hdl,
 		goto post;
 	}
 
-	rc = obj_verify_bio_csum(rpc, biod, cont_hdl->sch_csummer);
-post:
+	if (obj_rpc_is_update(rpc)) {
+		rc = obj_verify_bio_csum(rpc, biod, cont_hdl->sch_csummer);
+		/** CSUM Verified on update, now corrupt to fake corruption
+		 * on disk
+		 */
+		if (DAOS_FAIL_CHECK(DAOS_CHECKSUM_FAULT_DISK)  && !rma) {
+			D_PRINT("Corrupting data\n");
+
+			int i;
+			for (i = 0; i < orw->orw_nr; i++) {
+				struct bio_sglist	*bsgl = bio_iod_sgl(biod, i);
+				d_sg_list_t		 sgl;
+
+				rc = bio_sgl_convert(bsgl, &sgl);
+
+				if (rc == 0)
+					dcf_corrupt(&sgl, 1);
+
+				daos_sgl_fini(&sgl, false);
+
+				if (rc != 0) {
+					D_ERROR("Verify failed: %d\n", rc);
+					break;
+				}
+			}
+
+
+		}
+	}
+
+
+	post:
 	err = bio_iod_post(biod);
 	rc = rc ? : err;
 out:

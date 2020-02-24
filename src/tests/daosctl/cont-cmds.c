@@ -129,7 +129,7 @@ cmd_create_container(int argc, const char **argv, void *ctx)
 	d_rank_list_t    pool_service_list = {NULL, 0};
 	unsigned int     flag = DAOS_PC_EX;
 	daos_pool_info_t info = {0};
-	char		*pool_uuid_str = NULL;
+	char		 pool_uuid_str[100];
 	daos_prop_t	*props = NULL;
 
 	struct argp_option options[] = {
@@ -147,7 +147,8 @@ cmd_create_container(int argc, const char **argv, void *ctx)
 	};
 	struct argp argp = {options, parse_cont_args_cb};
 	struct container_cmd_options cc_options = {"daos_server",
-						   NULL, NULL, NULL,
+						   NULL, "12345678-1234-1234-1234-123456789012",
+						   NULL,
 						   0, 0, 0, 0};
 
 	/* adjust the arguments to skip over the command */
@@ -162,15 +163,16 @@ cmd_create_container(int argc, const char **argv, void *ctx)
 	/* uuid needs extra parsing */
 
 	if (cc_options.pool_uuid == NULL) {
-		D_ALLOC(pool_uuid_str, 100);
-		if (get_pool(pool_uuid_str))
+		D_PRINT("[RYON] %s:%d [%s()] > \n", __FILE__, __LINE__, __FUNCTION__);
+		if (get_pool(pool_uuid_str)){
 			cc_options.pool_uuid = pool_uuid_str;
+		}
 	}
-
+	printf("Creating container on pool: %s\nServer Group: %s\n", cc_options.pool_uuid,
+	       cc_options.server_group);
 	if (!cc_options.pool_uuid ||
 	    (uuid_parse(cc_options.pool_uuid, pool_uuid) < 0))
 		return EINVAL;
-	D_FREE(pool_uuid_str);
 
 
 	/* turn the list of pool service nodes into a rank list */
@@ -257,7 +259,8 @@ cmd_destroy_container(int argc, const char **argv, void *ctx)
 	};
 	struct argp argp = {options, parse_cont_args_cb};
 	struct container_cmd_options cc_options = {"daos_server",
-						   NULL, NULL, NULL,
+						   NULL, "12345678-1234-1234-1234-123456789012",
+						   NULL,
 						   0, 0, 0, 0};
 
 	/* adjust the arguments to skip over the command */
@@ -310,7 +313,7 @@ cmd_destroy_container(int argc, const char **argv, void *ctx)
 	if (rc)
 		printf("Container destroy fail, result: %d\n", rc);
 	else
-		printf("Container destroyed.\n");
+		printf("Container '%s' destroyed.\n", cc_options.cont_uuid);
 
 	daos_pool_disconnect(poh, NULL);
 	return rc;

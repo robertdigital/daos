@@ -297,10 +297,9 @@ cmd_destroy_pool(int argc, const char **argv, void *ctx)
 	 */
 	argp_parse(&argp, argc, (char **restrict)argv, 0, 0, &dp_options);
 
-	printf("destroy_pool uuid:%s server:%s force:%i\n", dp_options.uuid,
-	       dp_options.server_group, dp_options.force);
-
 	if (dp_options.all) {
+		printf("Destroying all pools in server group %s\n",
+		       dp_options.server_group);
 		daos_mgmt_pool_info_t *pools = NULL;
 		char pool_uuid_str[100] = {0};
 		daos_size_t pools_nr = 0;
@@ -319,20 +318,28 @@ cmd_destroy_pool(int argc, const char **argv, void *ctx)
 					       (int)dp_options.force, NULL);
 
 			uuid_unparse(pools[i].mgpi_uuid, pool_uuid_str);
-			if (rc)
+			if (rc) {
 				printf("<<<daosctl>>> Pool (%s) destroy result: %d\n",
 				       pool_uuid_str, rc);
-			else
-				printf("<<<daosctl>>> Pool (%s) destroyed.\n",
-				       pool_uuid_str);
+
+			} else {
+				printf("destroy_pool uuid:%s server:%s force:%i\n",
+					pool_uuid_str,
+				       dp_options.server_group, dp_options.force);
+//				printf("<<<daosctl>>> Pool (%s) destroyed.\n",
+//				       pool_uuid_str);
+
+			}
 		}
 		D_FREE(pools);
 	} else {
+
 		if (dp_options.uuid == NULL) {
 			printf("Pool UUID missing.\n");
 			return EINVAL;
 		}
-
+		printf("destroy_pool uuid:%s server:%s force:%i\n", dp_options.uuid,
+		       dp_options.server_group, dp_options.force);
 		rc = uuid_parse(dp_options.uuid, uuid);
 
 		rc = daos_pool_destroy(uuid, dp_options.server_group,

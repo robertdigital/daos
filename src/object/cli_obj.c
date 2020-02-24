@@ -2406,6 +2406,10 @@ csum_obj_update(struct dc_object *obj, daos_obj_update_t *args,
 	if (DAOS_FAIL_CHECK(DAOS_CHECKSUM_UPDATE_FAIL))
 		((char *)iod_csums[0].ic_data->cs_csum)[0]++;
 
+	/** Fake corruption over network */
+	if (DAOS_FAIL_CHECK(DAOS_CHECKSUM_FAULT_NETWORK))
+		dcf_corrupt(args->sgls, args->nr);
+
 	obj_auxi->rw_args.iod_csums = iod_csums;
 	obj_auxi->rw_args.dkey_csum = dkey_csum;
 

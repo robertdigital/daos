@@ -1065,3 +1065,17 @@ checksum_sgl_cb(uint8_t *buf, size_t len, void *args)
 
 	return daos_csummer_update(obj, buf, len);
 }
+
+void
+dcf_corrupt(d_sg_list_t *sgls, uint32_t nr)
+{
+//	((char *)sgls->sg_iovs->iov_buf)[0]++;
+
+	int i;
+
+	for (i = 0; i < nr; i++) {
+		d_sg_list_t *sgl = &sgls[i];
+		((char *)sgl->sg_iovs->iov_buf)[0]++;
+	}
+
+}

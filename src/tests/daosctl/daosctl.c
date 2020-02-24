@@ -76,6 +76,7 @@ static struct cmd_struct commands[] = {
 	{ "read-string", cmd_read_string },
 	{ "write-pattern", cmd_write_pattern },
 	{ "verify-pattern", cmd_verify_pattern },
+	{ "list-obj-class", cmd_list_obj_class },
 	{ "help", cmd_help }
 };
 int command_count = ARRAY_SIZE(commands);

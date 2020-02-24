@@ -56,5 +56,6 @@ int cmd_write_string(int argc, const char **argv, void *ctx);
 int cmd_read_string(int argc, const char **argv, void *ctx);
 int cmd_write_pattern(int argc, const char **argv, void *ctx);
 int cmd_verify_pattern(int argc, const char **argv, void *ctx);
+int cmd_list_obj_class(int argc, const char **argv, void *ctx);
 
 #endif /* _DAOSCTL_BUILTIN_H_ */
