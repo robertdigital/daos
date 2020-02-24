@@ -2170,6 +2170,8 @@ func TestMgmtSvc_validatePool(t *testing.T) {
 		"successful validation": {"100G", "10T", nil},
 		"scm too small":         {"15MB", "10T", FaultPoolScmTooSmall(15000000)},
 		"nvme too small":        {"100G", "900MB", FaultPoolNvmeTooSmall(900000000)},
+		"no scm":                {"0", "10T", FaultPoolScmTooSmall(0)},
+		"no nvme":               {"100G", "0", nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, buf := logging.NewTestLogger(t.Name())

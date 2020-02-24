@@ -327,6 +327,10 @@ func (svc *mgmtSvc) validatePool(req *mgmtpb.PoolCreateReq) error {
 		return FaultPoolScmTooSmall(req.Scmbytes)
 	}
 
+	if req.Nvmebytes == 0 {
+		return nil // SCM only pool is valid
+	}
+
 	minNvmeBytes, err := humanize.ParseBytes(minNvmeSize)
 	if err != nil {
 		return err
