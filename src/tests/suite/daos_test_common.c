@@ -865,3 +865,27 @@ daos_kill_exclude_server(test_arg_t *arg, const uuid_t pool_uuid,
 	daos_kill_server(arg, pool_uuid, grp, svc, rank);
 	daos_exclude_server(pool_uuid, grp, svc, rank);
 }
+
+
+daos_prop_t *
+get_daos_prop_with_owner_acl_perms(uint64_t perms, uint32_t type)
+{
+	daos_prop_t	*prop;
+	struct daos_acl	*acl;
+	struct daos_ace	*owner_ace;
+
+	owner_ace = daos_ace_create(DAOS_ACL_OWNER, NULL);
+	owner_ace->dae_access_types = DAOS_ACL_ACCESS_ALLOW;
+	owner_ace->dae_allow_perms = perms;
+	assert_true(daos_ace_is_valid(owner_ace));
+
+	acl = daos_acl_create(&owner_ace, 1);
+	assert_non_null(acl);
+
+	prop = daos_prop_alloc(1);
+	prop->dpp_entries[0].dpe_type = type;
+	prop->dpp_entries[0].dpe_val_ptr = acl;
+
+	daos_ace_free(owner_ace);
+	return prop;
+}

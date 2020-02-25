@@ -294,6 +294,8 @@ void daos_kill_server(test_arg_t *arg, const uuid_t pool_uuid, const char *grp,
 		      d_rank_list_t *svc, d_rank_t rank);
 void daos_kill_exclude_server(test_arg_t *arg, const uuid_t pool_uuid,
 			      const char *grp, d_rank_list_t *svc);
+daos_prop_t *get_daos_prop_with_owner_acl_perms(uint64_t perms,
+						uint32_t prop_type);
 typedef int (*test_setup_cb_t)(void **state);
 typedef int (*test_teardown_cb_t)(void **state);
 
