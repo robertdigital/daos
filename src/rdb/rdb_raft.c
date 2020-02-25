@@ -1719,6 +1719,7 @@ rdb_raft_check_state(struct rdb *db, const struct rdb_raft_state *state,
 		rc = compaction_rc;
 	switch (rc) {
 	case -DER_NOMEM:
+	case -DER_NOSPACE:
 		if (leader) {
 			raft_become_follower(db->d_raft);
 			leader = false;
@@ -1729,7 +1730,6 @@ rdb_raft_check_state(struct rdb *db, const struct rdb_raft_state *state,
 		}
 		break;
 	case -DER_SHUTDOWN:
-	case -DER_NOSPACE:
 	case -DER_IO:
 		db->d_cbs->dc_stop(db, rc, db->d_arg);
 		break;
