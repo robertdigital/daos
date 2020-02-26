@@ -81,7 +81,7 @@ func FaultPoolScmTooSmall(reqBytes uint64) *fault.Fault {
 	return serverFault(
 		code.ServerPoolScmTooSmall,
 		fmt.Sprintf("requested SCM capacity (%s) for pool is too small",
-			humanize.Bytes(reqBytes)),
+			humanize.IBytes(reqBytes)),
 		fmt.Sprintf("specify an SCM capacity larger than %s when creating a pool",
 			minScmSize),
 	)

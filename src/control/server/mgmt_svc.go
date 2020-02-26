@@ -45,8 +45,8 @@ import (
 
 const (
 	instanceUpdateDelay = 500 * time.Millisecond
-	minScmSize          = "16MB" // per storage target
-	minNvmeSize         = "1GB"  // per storage target
+	minScmSize          = "16MiB" // per VOS target
+	minNvmeSize         = "1GB"   // per VOS target
 )
 
 // NewRankResult returns a reference to a new member result struct.
@@ -317,13 +317,16 @@ func checkIsMSReplica(mi *IOServerInstance) error {
 	return nil
 }
 
-// validatePool ensures minimum SCM/NVMe pool size per storage target.
-func (svc *mgmtSvc) validatePool(req *mgmtpb.PoolCreateReq) error {
+// validatePool ensures minimum SCM/NVMe pool size per VOS target.
+//
+// Pool size request params are per-ioserver so need to be larger than minimum
+// allocation for each target.
+func (svc *mgmtSvc) validatePool(targetCount uint64, req *mgmtpb.PoolCreateReq) error {
 	minScmBytes, err := humanize.ParseBytes(minScmSize)
 	if err != nil {
 		return err
 	}
-	if req.Scmbytes < minScmBytes {
+	if req.Scmbytes < minScmBytes*targetCount {
 		return FaultPoolScmTooSmall(req.Scmbytes)
 	}
 
@@ -335,7 +338,7 @@ func (svc *mgmtSvc) validatePool(req *mgmtpb.PoolCreateReq) error {
 	if err != nil {
 		return err
 	}
-	if req.Nvmebytes < minNvmeBytes {
+	if req.Nvmebytes < minNvmeBytes*targetCount {
 		return FaultPoolNvmeTooSmall(req.Nvmebytes)
 	}
 
@@ -346,13 +349,14 @@ func (svc *mgmtSvc) validatePool(req *mgmtpb.PoolCreateReq) error {
 func (svc *mgmtSvc) PoolCreate(ctx context.Context, req *mgmtpb.PoolCreateReq) (*mgmtpb.PoolCreateResp, error) {
 	svc.log.Debugf("MgmtSvc.PoolCreate dispatch, req:%+v\n", *req)
 
-	if err := svc.validatePool(req); err != nil {
-		return nil, errors.Wrap(err, "validate pool create parameters")
-	}
-
 	mi, err := svc.harness.GetMSLeaderInstance()
 	if err != nil {
 		return nil, err
+	}
+
+	targetCount := uint64(mi.runner.GetConfig().TargetCount)
+	if err := svc.validatePool(targetCount, req); err != nil {
+		return nil, errors.Wrap(err, "validate pool create parameters")
 	}
 
 	dresp, err := mi.CallDrpc(drpc.ModuleMgmt, drpc.MethodPoolCreate, req)
