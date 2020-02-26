@@ -2021,13 +2021,21 @@ cont_op_with_svc(struct ds_pool_hdl *pool_hdl, struct cont_svc *svc,
 		if (rc != 0)
 			D_GOTO(out_lock, rc);
 		rc = cont_op_with_cont(&tx, pool_hdl, cont, rpc);
-		cont_put(cont);
 	}
 	if (rc != 0)
 		D_GOTO(out_lock, rc);
 
 	rc = rdb_tx_commit(&tx);
+	if (rc != 0)
+		D_GOTO(out_lock, rc);
+
+	if (opc == CONT_SNAP_CREATE || opc == CONT_SNAP_DESTROY) {
+		D_ASSERT(cont != NULL);
+		ds_update_snap_iv(&tx, cont);
+	}
 out_lock:
+	if (cont)
+		cont_put(cont);
 	ABT_rwlock_unlock(svc->cs_lock);
 	rdb_tx_end(&tx);
 out:

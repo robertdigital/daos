@@ -109,7 +109,7 @@ read_snap_list(struct rdb_tx *tx, struct cont *cont,
 }
 
 int
-update_snap_iv(struct rdb_tx *tx, struct cont *cont)
+ds_update_snap_iv(struct rdb_tx *tx, struct cont *cont)
 {
 	struct ds_pool	*pool;
 	uint64_t	*snapshots = NULL;
@@ -297,7 +297,6 @@ snap_create_bcast(struct rdb_tx *tx, struct cont *cont, crt_context_t *ctx,
 	}
 	D_DEBUG(DF_DSMS, DF_CONT": created snapshot "DF_U64"\n",
 		DP_CONT(cont->c_svc->cs_pool_uuid, cont->c_uuid), *epoch);
-	update_snap_iv(tx, cont);
 out_rpc:
 	crt_req_decref(rpc);
 out:
@@ -363,7 +362,6 @@ ds_cont_snap_destroy(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	D_DEBUG(DF_DSMS, DF_CONT": deleted snapshot [%lu]\n",
 		DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cei_op.ci_uuid),
 		in->cei_epoch);
-	update_snap_iv(tx, cont);
 out:
 	return rc;
 }
