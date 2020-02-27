@@ -1889,6 +1889,12 @@ test_cont_can_delete(void **state)
 	daos_iov_free(&cred);
 }
 
+static void
+test_cont_can_get_prop(void **state)
+{
+	assert_false(ds_sec_cont_can_get_prop(0));
+}
+
 /* Convenience macro for unit tests */
 #define ACL_UTEST(X)	cmocka_unit_test_setup_teardown(X, srv_acl_setup, \
 							srv_acl_teardown)
@@ -1954,6 +1960,7 @@ main(void)
 		cmocka_unit_test(test_pool_can_delete_cont),
 		cmocka_unit_test(test_cont_can_open),
 		cmocka_unit_test(test_cont_can_delete),
+		cmocka_unit_test(test_cont_can_get_prop),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
