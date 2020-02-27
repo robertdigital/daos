@@ -388,6 +388,7 @@ migrate_end_cb(void *data, bool noop)
 
 	/* Update aggregation time before yield */
 	vsi->vsi_agg_time = cur_time;
+	vsi->vsi_agg_scheduled = false;
 
 	/*
 	 * According to NVMe spec, unmap isn't an expensive non-queue command
@@ -421,7 +422,7 @@ migrate_end_cb(void *data, bool noop)
 }
 
 void
-migrate_free_exts(struct vea_space_info *vsi)
+migrate_free_exts(struct vea_space_info *vsi, bool add_tx_cb)
 {
 	uint64_t	cur_time;
 	int		rc;
@@ -431,6 +432,13 @@ migrate_free_exts(struct vea_space_info *vsi)
 		migrate_end_cb((void *)vsi, false);
 		return;
 	}
+
+	/*
+	 * Skip this free extent migration if the transaction is started
+	 * without tx callback data provided, see umem_tx_begin().
+	 */
+	if (!add_tx_cb)
+		return;
 
 	/*
 	 * Check aggregation time in advance to avoid unnecessary
@@ -444,13 +452,20 @@ migrate_free_exts(struct vea_space_info *vsi)
 	if (cur_time < (vsi->vsi_agg_time + VEA_MIGRATE_INTVL))
 		return;
 
+	/* Schedule one migrate_end_cb() is enough */
+	if (vsi->vsi_agg_scheduled)
+		return;
+
 	/*
 	 * Perform the migration in transaction end callback, since the
 	 * migration could yield on blob unmap.
 	 */
 	rc = umem_tx_add_callback(vsi->vsi_umem, vsi->vsi_txd, TX_STAGE_NONE,
 				  migrate_end_cb, vsi);
-	if (rc)
+	if (rc) {
 		D_ERROR("Add transaction end callback error "DF_RC"\n",
 			DP_RC(rc));
+		return;
+	}
+	vsi->vsi_agg_scheduled = true;
 }
