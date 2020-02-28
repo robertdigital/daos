@@ -1866,16 +1866,22 @@ test_cont_can_delete(void **state)
 	default_acl = ds_sec_alloc_default_daos_cont_acl();
 
 	/* Default ACL allows owner to delete it */
-	assert_true(ds_sec_cont_can_delete(&cred, &owner, default_acl));
+	assert_true(ds_sec_cont_can_delete(DAOS_PC_RW, &cred, &owner,
+					   default_acl));
 
 	/* Minimal ACL with RW access allowing delete */
-	assert_true(ds_sec_cont_can_delete(&cred, &owner, min_acl));
+	assert_true(ds_sec_cont_can_delete(DAOS_PC_RW, &cred, &owner, min_acl));
+
+	/* Read-only pool flags will prevent deletion */
+	assert_false(ds_sec_cont_can_delete(DAOS_PC_RO, &cred, &owner,
+					    min_acl));
 
 	/* Invalid inputs don't get any perms */
-	assert_false(ds_sec_cont_can_delete(NULL, NULL, NULL));
+	assert_false(ds_sec_cont_can_delete(DAOS_PC_RW, NULL, NULL, NULL));
 
 	/* doesn't have delete perms */
-	assert_false(ds_sec_cont_can_delete(&cred, &owner, no_del_acl));
+	assert_false(ds_sec_cont_can_delete(DAOS_PC_RW, &cred, &owner,
+					    no_del_acl));
 
 	daos_acl_free(min_acl);
 	daos_acl_free(no_del_acl);

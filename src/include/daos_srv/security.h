@@ -160,6 +160,7 @@ ds_sec_cont_can_open(uint64_t cont_capas);
  * Determine if the container can be deleted by the user with the given
  * credential, based on the container ACL and ownership information.
  *
+ * \param	pool_flags	Parent pool handle flags
  * \param	cred		Pool's security credential
  * \param	ownership	Container ownership information
  * \param	acl		Container ACL
@@ -168,7 +169,7 @@ ds_sec_cont_can_open(uint64_t cont_capas);
  *		False		Operation forbidden
  */
 bool
-ds_sec_cont_can_delete(d_iov_t *cred, struct ownership *ownership,
-		       struct daos_acl *acl);
+ds_sec_cont_can_delete(uint64_t pool_flags, d_iov_t *cred,
+		       struct ownership *ownership, struct daos_acl *acl);
 
 #endif /* __DAOS_SRV_SECURITY_H__ */

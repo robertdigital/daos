@@ -754,7 +754,8 @@ cont_destroy(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	 * - Users who have been given access to delete the specific container
 	 */
 	if (!ds_sec_pool_can_delete_cont(pool_hdl->sph_sec_capas) &&
-	    !ds_sec_cont_can_delete(&pool_hdl->sph_cred, &owner, acl)) {
+	    !ds_sec_cont_can_delete(pool_hdl->sph_flags, &pool_hdl->sph_cred,
+				    &owner, acl)) {
 		D_ERROR(DF_CONT": permission denied to delete cont\n",
 			DP_CONT(pool_hdl->sph_pool->sp_uuid,
 				in->cdi_op.ci_uuid));

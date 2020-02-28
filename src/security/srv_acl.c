@@ -689,13 +689,24 @@ ds_sec_cont_can_open(uint64_t cont_capas)
 }
 
 bool
-ds_sec_cont_can_delete(d_iov_t *cred, struct ownership *ownership,
+ds_sec_cont_can_delete(uint64_t pool_flags, d_iov_t *cred,
+		       struct ownership *ownership,
 		       struct daos_acl *acl)
 {
 	int		rc;
 	uint64_t	capas = 0;
+	uint64_t	cont_flags = 0;
 
-	rc = ds_sec_cont_get_capabilities(DAOS_COO_RW, cred, ownership, acl,
+	/*
+	 * Translate the pool flags to allow us to properly filter RO/RW
+	 * permissions
+	 */
+	if (pool_flags & DAOS_PC_RO)
+		cont_flags |= DAOS_COO_RO;
+	if (pool_flags & DAOS_PC_RW)
+		cont_flags |= DAOS_COO_RW;
+
+	rc = ds_sec_cont_get_capabilities(cont_flags, cred, ownership, acl,
 					  &capas);
 	if (rc != 0) {
 		D_ERROR("failed to get container capabilities: %d\n", rc);
