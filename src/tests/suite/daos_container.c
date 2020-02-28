@@ -279,6 +279,24 @@ is_acl_prop_default(struct daos_acl *prop)
 	return true;
 }
 
+static daos_prop_t *
+get_query_prop_all(void)
+{
+	daos_prop_t	*prop;
+	const int	prop_count = DAOS_PROP_CO_NUM;
+	int		i;
+
+	prop = daos_prop_alloc(prop_count);
+	assert_non_null(prop);
+
+	for (i = 0; i < prop_count; i++) {
+		prop->dpp_entries[i].dpe_type = DAOS_PROP_CO_MIN + 1 + i;
+		assert_true(prop->dpp_entries[i].dpe_type < DAOS_PROP_CO_MAX);
+	}
+
+	return prop;
+}
+
 static void
 co_properties(void **state)
 {
@@ -318,22 +336,11 @@ co_properties(void **state)
 	}
 	MPI_Barrier(MPI_COMM_WORLD);
 
-	const int prop_count = 9;
-
-	prop_query = daos_prop_alloc(prop_count);
-	prop_query->dpp_entries[0].dpe_type = DAOS_PROP_CO_LABEL;
-	prop_query->dpp_entries[1].dpe_type = DAOS_PROP_CO_CSUM;
-	prop_query->dpp_entries[2].dpe_type = DAOS_PROP_CO_CSUM_CHUNK_SIZE;
-	prop_query->dpp_entries[3].dpe_type = DAOS_PROP_CO_CSUM_SERVER_VERIFY;
-	prop_query->dpp_entries[4].dpe_type = DAOS_PROP_CO_ENCRYPT;
-	prop_query->dpp_entries[5].dpe_type = DAOS_PROP_CO_SNAPSHOT_MAX;
-	prop_query->dpp_entries[6].dpe_type = DAOS_PROP_CO_ACL;
-	prop_query->dpp_entries[7].dpe_type = DAOS_PROP_CO_OWNER;
-	prop_query->dpp_entries[8].dpe_type = DAOS_PROP_CO_OWNER_GROUP;
+	prop_query = get_query_prop_all();
 	rc = daos_cont_query(arg->coh, NULL, prop_query, NULL);
 	assert_int_equal(rc, 0);
 
-	assert_int_equal(prop_query->dpp_nr, prop_count);
+	assert_int_equal(prop_query->dpp_nr, DAOS_PROP_CO_NUM);
 	/* set properties should get the value user set */
 	entry = daos_prop_entry_get(prop_query, DAOS_PROP_CO_LABEL);
 	if (entry == NULL || strcmp(entry->dpe_str, label) != 0) {
@@ -572,6 +579,8 @@ co_acl(void **state)
 	assert_int_equal(rc, 0);
 	assert_non_null(user);
 
+	print_message("Creating ACL with entry for user %s\n", user);
+
 	exp_acl = daos_acl_create(NULL, 0);
 	assert_non_null(exp_acl);
 
@@ -801,6 +810,8 @@ co_create_access_denied(void **state)
 	assert_int_equal(arg->setup_state, SETUP_CONT_CREATE);
 	assert_int_equal(rc, -DER_NO_PERM);
 
+	uuid_clear(arg->co_uuid); /* wasn't actually created */
+
 	daos_prop_free(prop);
 	test_teardown((void **)&arg);
 }
@@ -986,6 +997,171 @@ co_open_access(void **state)
 				   0);
 }
 
+static void
+expect_co_query_access(test_arg_t *arg0, daos_prop_t *query_prop,
+		       uint64_t perms, int exp_result)
+{
+	test_arg_t		*arg = NULL;
+	daos_prop_t		*cont_prop;
+	daos_cont_info_t	 info;
+	int			 rc;
+
+	rc = test_setup((void **)&arg, SETUP_EQ, arg0->multi_rank,
+			DEFAULT_POOL_SIZE, NULL);
+	assert_int_equal(rc, 0);
+
+	cont_prop = get_daos_prop_with_owner_acl_perms(perms,
+						       DAOS_PROP_CO_ACL);
+
+	arg->cont_open_flags = DAOS_COO_RO;
+	while (!rc && arg->setup_state != SETUP_CONT_CONNECT)
+		rc = test_setup_next_step((void **)&arg, NULL, NULL,
+					  cont_prop);
+	assert_int_equal(rc, 0);
+
+	rc = daos_cont_query(arg->coh, &info, query_prop, NULL);
+	assert_int_equal(rc, exp_result);
+
+	daos_prop_free(cont_prop);
+	test_teardown((void **)&arg);
+}
+
+static daos_prop_t *
+get_single_query_prop(uint32_t type)
+{
+	daos_prop_t	*prop;
+
+	prop = daos_prop_alloc(1);
+	assert_non_null(prop);
+
+	prop->dpp_entries[0].dpe_type = type;
+
+	return prop;
+}
+
+static void
+co_query_access(void **state)
+{
+	test_arg_t	*arg0 = *state;
+	daos_prop_t	*prop;
+
+	if (arg0->myrank != 0)
+		skip();
+
+	print_message("Not asking for any props\n");
+	expect_co_query_access(arg0, NULL,
+			       DAOS_ACL_PERM_CONT_ALL &
+			       ~DAOS_ACL_PERM_GET_PROP &
+			       ~DAOS_ACL_PERM_GET_ACL,
+			       -0);
+
+	print_message("All props with no get-prop access\n");
+	prop = get_query_prop_all();
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_CONT_ALL & ~DAOS_ACL_PERM_GET_PROP,
+			       -DER_NO_PERM);
+	daos_prop_free(prop);
+
+	print_message("All props with no get-ACL access\n");
+	prop = get_query_prop_all();
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_CONT_ALL & ~DAOS_ACL_PERM_GET_ACL,
+			       -DER_NO_PERM);
+	daos_prop_free(prop);
+
+	print_message("All props with only prop and ACL access\n");
+	prop = get_query_prop_all();
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_GET_PROP | DAOS_ACL_PERM_GET_ACL,
+			       0);
+	daos_prop_free(prop);
+
+	/*
+	 * ACL props can only be accessed by users with get-ACL permission
+	 */
+	print_message("ACL prop with no get-ACL access\n");
+	prop = get_single_query_prop(DAOS_PROP_CO_ACL);
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_CONT_ALL & ~DAOS_ACL_PERM_GET_ACL,
+			       -DER_NO_PERM);
+	daos_prop_free(prop);
+
+	print_message("ACL prop with only get-ACL access\n");
+	prop = get_single_query_prop(DAOS_PROP_CO_ACL);
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_GET_ACL,
+			       0);
+	daos_prop_free(prop);
+
+	/*
+	 * Props unrelated to access/ACLs can only be accessed by users with
+	 * the get-prop permission
+	 */
+	print_message("Non-access-related prop with no get-prop access\n");
+	prop = get_single_query_prop(DAOS_PROP_CO_LABEL);
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_CONT_ALL & ~DAOS_ACL_PERM_GET_PROP,
+			       -DER_NO_PERM);
+	daos_prop_free(prop);
+
+	print_message("Non-access-related prop with only prop access\n");
+	prop = get_single_query_prop(DAOS_PROP_CO_LABEL);
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_GET_PROP,
+			       0);
+	daos_prop_free(prop);
+
+	/*
+	 * Ownership props can be accessed by users with either get-prop or
+	 * get-acl access
+	 */
+	print_message("Owner with only prop access\n");
+	prop = get_single_query_prop(DAOS_PROP_CO_OWNER);
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_GET_PROP,
+			       0);
+	daos_prop_free(prop);
+
+	print_message("Owner with only ACL access\n");
+	prop = get_single_query_prop(DAOS_PROP_CO_OWNER);
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_GET_ACL,
+			       0);
+	daos_prop_free(prop);
+
+	print_message("Owner with neither get-prop nor get-acl access\n");
+	prop = get_single_query_prop(DAOS_PROP_CO_OWNER);
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_CONT_ALL &
+			       ~(DAOS_ACL_PERM_GET_PROP |
+			         DAOS_ACL_PERM_GET_ACL),
+			       -DER_NO_PERM);
+	daos_prop_free(prop);
+
+	print_message("Owner-group with only prop access\n");
+	prop = get_single_query_prop(DAOS_PROP_CO_OWNER_GROUP);
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_GET_PROP,
+			       0);
+	daos_prop_free(prop);
+
+	print_message("Owner-group with only ACL access\n");
+	prop = get_single_query_prop(DAOS_PROP_CO_OWNER_GROUP);
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_GET_ACL,
+			       0);
+	daos_prop_free(prop);
+
+	print_message("Owner-group with no get-prop or get-acl access\n");
+	prop = get_single_query_prop(DAOS_PROP_CO_OWNER_GROUP);
+	expect_co_query_access(arg0, prop,
+			       DAOS_ACL_PERM_CONT_ALL &
+			       ~(DAOS_ACL_PERM_GET_PROP |
+			         DAOS_ACL_PERM_GET_ACL),
+			       -DER_NO_PERM);
+	daos_prop_free(prop);
+}
+
 static int
 co_setup_sync(void **state)
 {
@@ -1036,6 +1212,8 @@ static const struct CMUnitTest co_tests[] = {
 	  co_destroy_allowed_by_pool, NULL, test_case_teardown},
 	{ "CONT13: container open access by ACL",
 	  co_open_access, NULL, test_case_teardown},
+	{ "CONT14: container query access by ACL",
+	  co_query_access, NULL, test_case_teardown},
 };
 
 int

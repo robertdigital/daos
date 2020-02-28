@@ -1448,6 +1448,50 @@ out:
 	return rc;
 }
 
+static bool
+hdl_has_query_access(struct container_hdl *hdl, struct cont *cont,
+		     uint64_t query_bits)
+{
+	uint64_t	prop_bits;
+	uint64_t	ownership_bits;
+
+	if ((query_bits & DAOS_CO_QUERY_PROP_ALL) &&
+	    !ds_sec_cont_can_get_props(hdl->ch_sec_capas) &&
+	    !ds_sec_cont_can_get_acl(hdl->ch_sec_capas)) {
+		D_ERROR(DF_CONT": permission denied, no access to props\n",
+			DP_CONT(cont->c_svc->cs_pool_uuid, cont->c_uuid));
+		return false;
+	}
+
+	/* ACL access is managed separately from the other props */
+	if ((query_bits & DAOS_CO_QUERY_PROP_ACL) &&
+	    !ds_sec_cont_can_get_acl(hdl->ch_sec_capas)) {
+		D_ERROR(DF_CONT": permission denied to get ACL\n",
+			DP_CONT(cont->c_svc->cs_pool_uuid, cont->c_uuid));
+		return false;
+	}
+
+	/*
+	 * Ownership can be accessed with either ACL or general prop access.
+	 * Don't need both or any particular one, so it's excluded from the
+	 * more specific checks.
+	 */
+	ownership_bits = DAOS_CO_QUERY_PROP_OWNER |
+			 DAOS_CO_QUERY_PROP_OWNER_GROUP;
+
+	/* All remaining props */
+	prop_bits = (DAOS_CO_QUERY_PROP_ALL &
+		     ~(DAOS_CO_QUERY_PROP_ACL | ownership_bits));
+	if ((query_bits & prop_bits) &&
+	    !ds_sec_cont_can_get_props(hdl->ch_sec_capas)) {
+		D_ERROR(DF_CONT": permission denied to get props\n",
+			DP_CONT(cont->c_svc->cs_pool_uuid, cont->c_uuid));
+		return false;
+	}
+
+	return true;
+}
+
 static int
 cont_query(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl, struct cont *cont,
 	   struct container_hdl *hdl, crt_rpc_t *rpc)
@@ -1461,10 +1505,17 @@ cont_query(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl, struct cont *cont,
 		DP_CONT(pool_hdl->sph_pool->sp_uuid, in->cqi_op.ci_uuid), rpc,
 		DP_UUID(in->cqi_op.ci_hdl));
 
+	if (!hdl_has_query_access(hdl, cont, in->cqi_bits))
+		return -DER_NO_PERM;
+
 	rc = cont_query_bcast(rpc->cr_ctx, cont, in->cqi_op.ci_pool_hdl,
 			      in->cqi_op.ci_hdl, out);
 	if (rc)
 		return rc;
+
+	/* Caller didn't actually ask for any props */
+	if (in->cqi_bits == 0)
+		return 0;
 
 	/* the allocated prop will be freed after rpc replied in
 	 * ds_cont_op_handler.
