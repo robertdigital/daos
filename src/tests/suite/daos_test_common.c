@@ -106,7 +106,7 @@ test_setup_pool_create(void **state, struct test_pool *ipool,
 		print_message("setup: creating pool, SCM size="DF_U64" GB, "
 			      "NVMe size="DF_U64" GB\n",
 			      (outpool->pool_size >> 30), nvme_size >> 30);
-		rc = daos_pool_create(arg->mode, arg->uid, arg->gid, arg->group,
+		rc = daos_pool_create(0, arg->uid, arg->gid, arg->group,
 				      NULL, "pmem", outpool->pool_size,
 				      nvme_size, prop, &outpool->svc,
 				      outpool->pool_uuid, NULL);
@@ -157,7 +157,8 @@ test_setup_pool_connect(void **state, struct test_pool *pool)
 
 		print_message("setup: connecting to pool\n");
 		rc = daos_pool_connect(arg->pool.pool_uuid, arg->group,
-				       &arg->pool.svc, DAOS_PC_RW,
+				       &arg->pool.svc,
+				       arg->pool.pool_connect_flags,
 				       &arg->pool.poh, &arg->pool.pool_info,
 				       NULL /* ev */);
 		if (rc)
@@ -229,7 +230,8 @@ test_setup_cont_open(void **state)
 
 	if (arg->myrank == 0) {
 		print_message("setup: opening container\n");
-		rc = daos_cont_open(arg->pool.poh, arg->co_uuid, DAOS_COO_RW,
+		rc = daos_cont_open(arg->pool.poh, arg->co_uuid,
+				    arg->cont_open_flags,
 				    &arg->coh, &arg->co_info, NULL);
 		if (rc)
 			print_message("daos_cont_open failed, rc: %d\n", rc);
@@ -307,7 +309,6 @@ test_setup(void **state, unsigned int step, bool multi_rank,
 		arg->pool.svc.rl_ranks = arg->pool.ranks;
 		arg->pool.slave = false;
 
-		arg->mode = 0731;
 		arg->uid = geteuid();
 		arg->gid = getegid();
 
@@ -317,7 +318,9 @@ test_setup(void **state, unsigned int step, bool multi_rank,
 
 		arg->hdl_share = false;
 		arg->pool.poh = DAOS_HDL_INVAL;
+		arg->pool.pool_connect_flags = DAOS_PC_RW;
 		arg->coh = DAOS_HDL_INVAL;
+		arg->cont_open_flags = DAOS_COO_RW;
 
 		arg->pool.destroyed = false;
 	}

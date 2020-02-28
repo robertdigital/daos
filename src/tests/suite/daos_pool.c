@@ -1018,22 +1018,16 @@ expect_pool_connect_access(test_arg_t *arg0, uint64_t perms,
 			DEFAULT_POOL_SIZE, NULL);
 	assert_int_equal(rc, 0);
 
+	arg->pool.pool_connect_flags = flags;
 	prop = get_daos_prop_with_owner_acl_perms(perms,
 						  DAOS_PROP_PO_ACL);
 
-	while (!rc && arg->setup_state != SETUP_POOL_CREATE)
+	while (!rc && arg->setup_state != SETUP_POOL_CONNECT)
 		rc = test_setup_next_step((void **)&arg, NULL, prop, NULL);
-	assert_int_equal(rc, 0);
 
-	MPI_Barrier(MPI_COMM_WORLD);
-
-	rc = daos_pool_connect(arg->pool.pool_uuid, arg->group,
-			       &arg->pool.svc, flags,
-			       &arg->pool.poh, &arg->pool.pool_info,
-			       NULL);
+	/* Make sure we actually got to pool connect */
+	assert_int_equal(arg->setup_state, SETUP_POOL_CONNECT);
 	assert_int_equal(rc, exp_result);
-
-	MPI_Barrier(MPI_COMM_WORLD);
 
 	daos_prop_free(prop);
 	test_teardown((void **)&arg);

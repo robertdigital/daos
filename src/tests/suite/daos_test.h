@@ -92,6 +92,7 @@ struct test_pool {
 	daos_handle_t		poh;
 	daos_pool_info_t	pool_info;
 	daos_size_t		pool_size;
+	uint64_t		pool_connect_flags;
 	/* Updated if some ranks are killed during degraged or rebuild
 	 * test, so we know whether some tests is allowed to be run.
 	 */
@@ -126,11 +127,11 @@ typedef struct {
 	const char	       *group;
 	struct test_pool	pool;
 	uuid_t			co_uuid;
-	unsigned int		mode;
 	unsigned int		uid;
 	unsigned int		gid;
 	daos_handle_t		eq;
 	daos_handle_t		coh;
+	uint64_t		cont_open_flags;
 	daos_cont_info_t	co_info;
 	int			setup_state;
 	bool			async;

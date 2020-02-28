@@ -779,6 +779,9 @@ co_create_access_denied(void **state)
 	daos_prop_t	*prop;
 	int		 rc;
 
+	if (arg0->myrank != 0)
+		skip();
+
 	rc = test_setup((void **)&arg, SETUP_EQ, arg0->multi_rank,
 			DEFAULT_POOL_SIZE, NULL);
 	assert_int_equal(rc, 0);
@@ -791,17 +794,12 @@ co_create_access_denied(void **state)
 						  ~DAOS_ACL_PERM_WRITE,
 						  DAOS_PROP_PO_ACL);
 
-	while (!rc && arg->setup_state != SETUP_POOL_CONNECT)
+	while (!rc && arg->setup_state != SETUP_CONT_CREATE)
 		rc = test_setup_next_step((void **)&arg, NULL, prop, NULL);
-	assert_int_equal(rc, 0);
 
-	MPI_Barrier(MPI_COMM_WORLD);
-
-	uuid_generate(arg->co_uuid);
-	rc = daos_cont_create(arg->pool.poh, arg->co_uuid, NULL, NULL);
+	/* Make sure we actually got to container create step */
+	assert_int_equal(arg->setup_state, SETUP_CONT_CREATE);
 	assert_int_equal(rc, -DER_NO_PERM);
-
-	MPI_Barrier(MPI_COMM_WORLD);
 
 	daos_prop_free(prop);
 	test_teardown((void **)&arg);
@@ -815,15 +813,16 @@ co_destroy_access_denied(void **state)
 	daos_prop_t	*pool_prop;
 	daos_prop_t	*cont_prop;
 	int		 rc;
-	struct daos_acl	*cont_acl;
+	struct daos_acl	*cont_acl = NULL;
 	struct daos_ace	*update_ace;
 	daos_handle_t	coh;
+
+	if (arg0->myrank != 0)
+		skip();
 
 	rc = test_setup((void **)&arg, SETUP_EQ, arg0->multi_rank,
 			DEFAULT_POOL_SIZE, NULL);
 	assert_int_equal(rc, 0);
-
-	print_message("Try to delete container where pool and cont deny\n");
 
 	/*
 	 * Pool doesn't give the owner delete cont privs. For the pool, write
@@ -844,8 +843,8 @@ co_destroy_access_denied(void **state)
 					  cont_prop);
 	assert_int_equal(rc, 0);
 
-	MPI_Barrier(MPI_COMM_WORLD);
-
+	print_message("Try to delete container where pool and cont "
+		      "deny access\n");
 	rc = daos_cont_destroy(arg->pool.poh, arg->co_uuid, 1, NULL);
 	assert_int_equal(rc, -DER_NO_PERM);
 
@@ -853,14 +852,15 @@ co_destroy_access_denied(void **state)
 
 	cont_acl = daos_acl_dup(cont_prop->dpp_entries[0].dpe_val_ptr);
 	assert_non_null(cont_acl);
-	rc = daos_acl_get_ace_for_principal(cont_acl, DAOS_ACL_OWNER, NULL,
+	rc = daos_acl_get_ace_for_principal(cont_acl, DAOS_ACL_OWNER,
+					    NULL,
 					    &update_ace);
 	assert_int_equal(rc, 0);
 	update_ace->dae_allow_perms = DAOS_ACL_PERM_CONT_ALL;
 
 	print_message("- getting container handle\n");
-	rc = daos_cont_open(arg->pool.poh, arg->co_uuid, DAOS_COO_RW, &coh,
-			    NULL, NULL);
+	rc = daos_cont_open(arg->pool.poh, arg->co_uuid, DAOS_COO_RW,
+			    &coh, NULL, NULL);
 	assert_int_equal(rc, 0);
 
 	print_message("- updating cont ACL to restore delete privs\n");
@@ -874,8 +874,6 @@ co_destroy_access_denied(void **state)
 	print_message("Deleting container now should succeed\n");
 	rc = daos_cont_destroy(arg->pool.poh, arg->co_uuid, 1, NULL);
 	assert_int_equal(rc, 0);
-
-	MPI_Barrier(MPI_COMM_WORLD);
 
 	/* Clear cont uuid since we already deleted it */
 	uuid_clear(arg->co_uuid);
@@ -895,11 +893,12 @@ co_destroy_allowed_by_pool(void **state)
 	daos_prop_t	*cont_prop;
 	int		 rc;
 
+	if (arg0->myrank != 0)
+		skip();
+
 	rc = test_setup((void **)&arg, SETUP_EQ, arg0->multi_rank,
 			DEFAULT_POOL_SIZE, NULL);
 	assert_int_equal(rc, 0);
-
-	print_message("Delete a container where only pool allows it\n");
 
 	/* pool gives the owner all privs, including delete cont */
 	pool_prop = get_daos_prop_with_owner_acl_perms(DAOS_ACL_PERM_POOL_ALL,
@@ -915,13 +914,10 @@ co_destroy_allowed_by_pool(void **state)
 					  cont_prop);
 	assert_int_equal(rc, 0);
 
-	MPI_Barrier(MPI_COMM_WORLD);
-
-	print_message("Deleting container should succeed\n");
+	print_message("Deleting container with only pool-level "
+		      "perms\n");
 	rc = daos_cont_destroy(arg->pool.poh, arg->co_uuid, 1, NULL);
 	assert_int_equal(rc, 0);
-
-	MPI_Barrier(MPI_COMM_WORLD);
 
 	/* Clear cont uuid since we already deleted it */
 	uuid_clear(arg->co_uuid);
@@ -943,20 +939,16 @@ expect_cont_open_access(test_arg_t *arg0, uint64_t perms, uint64_t flags,
 			DEFAULT_POOL_SIZE, NULL);
 	assert_int_equal(rc, 0);
 
+	arg->cont_open_flags = flags;
 	prop = get_daos_prop_with_owner_acl_perms(perms,
 						  DAOS_PROP_CO_ACL);
 
-	while (!rc && arg->setup_state != SETUP_CONT_CREATE)
+	while (!rc && arg->setup_state != SETUP_CONT_CONNECT)
 		rc = test_setup_next_step((void **)&arg, NULL, NULL, prop);
-	assert_int_equal(rc, 0);
 
-	MPI_Barrier(MPI_COMM_WORLD);
-
-	rc = daos_cont_open(arg->pool.poh, arg->co_uuid, flags, &arg->coh,
-			    NULL, NULL);
+	/* Make sure we actually got to the container open step */
+	assert_int_equal(arg->setup_state, SETUP_CONT_CONNECT);
 	assert_int_equal(rc, exp_result);
-
-	MPI_Barrier(MPI_COMM_WORLD);
 
 	daos_prop_free(prop);
 	test_teardown((void **)&arg);
@@ -966,6 +958,9 @@ static void
 co_open_access(void **state)
 {
 	test_arg_t	*arg0 = *state;
+
+	if (arg0->myrank != 0)
+		skip();
 
 	print_message("cont ACL gives the owner no permissions\n");
 	expect_cont_open_access(arg0, 0, DAOS_COO_RO, -DER_NO_PERM);
