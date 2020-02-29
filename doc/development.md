@@ -58,9 +58,7 @@ For OSes that don't supply a package:
     export PATH=$GOPATH/bin:$PATH
 ```
 
-* Then follow the [installation instructions on Github](https://github.com/golang/dep).
-
-To update the vendor directory using dep after changing Gopkg.toml, first make sure DAOS is cloned into
+To update the vendor directory, first make sure DAOS is cloned into
 
 ```
     $GOPATH/src/github.com/daos-stack/daos
