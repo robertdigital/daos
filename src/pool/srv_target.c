@@ -384,6 +384,17 @@ ds_pool_lookup(const uuid_t uuid)
 }
 
 void
+ds_pool_get(struct ds_pool *pool)
+{
+	struct daos_llink      *llink;
+
+	ABT_mutex_lock(pool_cache_lock);
+	daos_lru_ref_hold(pool_cache, (void *)pool->sp_uuid, sizeof(uuid_t),
+			  NULL, &llink);
+	ABT_mutex_unlock(pool_cache_lock);
+}
+
+void
 ds_pool_put(struct ds_pool *pool)
 {
 	ABT_mutex_lock(pool_cache_lock);
@@ -719,6 +730,64 @@ pool_tgt_query(struct ds_pool *pool, struct daos_pool_space *ps)
 	}
 
 	*ps = agg_arg.qxa_space;
+	return rc;
+}
+
+int
+ds_pool_tgt_connect(struct ds_pool *pool, struct pool_iv_conn *pic)
+{
+	struct ds_pool_hdl	*hdl = NULL;
+	d_iov_t			cred_iov;
+	int			rc;
+
+	hdl = ds_pool_hdl_lookup(pic->pic_hdl);
+	if (hdl != NULL) {
+		if (hdl->sph_sec_capas == pic->pic_capas) {
+			D_DEBUG(DF_DSMS, DF_UUID": found compatible pool "
+				"handle: hdl="DF_UUID" capas="DF_U64"\n",
+				DP_UUID(pool->sp_uuid), DP_UUID(pic->pic_hdl),
+				hdl->sph_sec_capas);
+			rc = 0;
+		} else {
+			D_ERROR(DF_UUID": found conflicting pool handle: hdl="
+				DF_UUID" capas="DF_U64"\n",
+				DP_UUID(pool->sp_uuid), DP_UUID(pic->pic_hdl),
+				hdl->sph_sec_capas);
+			rc = -DER_EXIST;
+		}
+		ds_pool_hdl_put(hdl);
+		return 0;
+	}
+
+	D_ALLOC_PTR(hdl);
+	if (hdl == NULL)
+		D_GOTO(out, rc = -DER_NOMEM);
+
+	ds_pool_get(pool);
+	uuid_copy(hdl->sph_uuid, pic->pic_hdl);
+	hdl->sph_flags = pic->pic_flags;
+	hdl->sph_sec_capas = pic->pic_capas;
+	hdl->sph_pool = pool;
+
+	cred_iov.iov_len = pic->pic_cred_size;
+	cred_iov.iov_buf_len = pic->pic_cred_size;
+	cred_iov.iov_buf = &pic->pic_creds[0];
+	rc = daos_iov_copy(&hdl->sph_cred, &cred_iov);
+	if (rc != 0)
+		D_GOTO(out, rc);
+
+	rc = pool_hdl_add(hdl);
+	if (rc != 0) {
+		daos_iov_free(&hdl->sph_cred);
+		D_GOTO(out, rc);
+	}
+
+out:
+	if (rc != 0 && hdl != NULL)
+		D_FREE(hdl);
+
+	D_DEBUG(DF_DSMS, DF_UUID": connect "DF_RC"\n",
+		DP_UUID(pool->sp_uuid), DP_RC(rc));
 	return rc;
 }
 
