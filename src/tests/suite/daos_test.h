@@ -205,6 +205,10 @@ enum {
 int
 test_teardown(void **state);
 int
+test_teardown_cont_hdl(test_arg_t *arg);
+int
+test_teardown_cont(test_arg_t *arg);
+int
 test_setup(void **state, unsigned int step, bool multi_rank,
 	   daos_size_t pool_size, struct test_pool *pool);
 int

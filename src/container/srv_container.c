@@ -1605,6 +1605,22 @@ cont_query(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl, struct cont *cont,
 	return rc;
 }
 
+static bool
+hdl_can_set_prop(struct cont *cont, struct container_hdl *hdl,
+		 daos_prop_t *prop)
+{
+	struct daos_prop_entry *entry;
+
+	entry = daos_prop_entry_get(prop, DAOS_PROP_CO_ACL);
+	if ((entry != NULL) && !ds_sec_cont_can_set_acl(hdl->ch_sec_capas)) {
+		D_ERROR(DF_CONT": permission denied for set-ACL\n",
+			DP_CONT(cont->c_svc->cs_pool_uuid, cont->c_uuid));
+		return false;
+	}
+
+	return true;
+}
+
 static int
 set_prop(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	 struct cont *cont, struct container_hdl *hdl, uuid_t hdl_uuid,
@@ -1617,11 +1633,7 @@ set_prop(struct rdb_tx *tx, struct ds_pool_hdl *pool_hdl,
 	if (!daos_prop_valid(prop_in, false, true))
 		D_GOTO(out, rc = -DER_INVAL);
 
-	/*
-	 * Can't modify the container props without RW perms to the container.
-	 * TODO DAOS-2063: Update check when set-prop and set-acl capas added.
-	 */
-	if (!(hdl->ch_flags & DAOS_COO_RW))
+	if (!hdl_can_set_prop(cont, hdl, prop_in))
 		D_GOTO(out, rc = -DER_NO_PERM);
 
 	/* Read all props for prop IV update */
